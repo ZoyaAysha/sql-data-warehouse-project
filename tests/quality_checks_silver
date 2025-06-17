@@ -1,10 +1,22 @@
 
+========================================================================================================
+Quality Checks
+=========================================================================================================
+Script Purpose:
+This script performs various quality checks  for data consistency, accuracy and standarization across the 
+silver schemas. It includes checks for :
+- Null or duplicate primary keys.
+- Unwanted spaces in string fields.
+- Invalid date ranges and orders
+- Data consistency between related fields.
+-------------------------------------------------------------------------------------------------------
+
 -- Data Cleaning ---
 -- Check for nulls or Duplicates in Primary Key --
 USE Datawarehouse;
 
 SELECT cst_id, COUNT(*)
-FROM bronze.crm_cust_info
+FROM silver.crm_cust_info
 GROUP BY cst_id
 HAVING COUNT(*) > 1 OR cst_id is NULL;
 
@@ -13,7 +25,7 @@ WITH CTE1 AS (
 SELECT * ,
 	ROW_NUMBER() OVER(PARTITION BY cst_id ORDER BY cst_create_date DESC) AS flag_last
 	FROM
-bronze.crm_cust_info
+silver.crm_cust_info
 )
 SELECT * FROM CTE1
 	WHERE flag_last = 1 and cst_id = 29466;
@@ -22,7 +34,7 @@ SELECT * FROM CTE1
 SELECT * 
 FROM ( SELECT *, 
 	ROW_NUMBER() OVER(PARTITION BY cst_id ORDER BY cst_create_date DESC) AS flag_last
-	FROM bronze.crm_cust_info
+	FROM silver.crm_cust_info
 WHERE cst_id IS NOT NULL
 ) t WHERE flag_last = 1;
 
@@ -58,12 +70,12 @@ HAVING COUNT(*) > 1 OR prd_id IS NULL;
 -- check for nulls or negative numbers --
 
 SELECT prd_cost
-FROM bronze.crm_prd_info
+FROM silver.crm_prd_info
 WHERE prd_cost < 0 OR prd_cost IS NULL;
 
 -- check for invalid Date Orders --
 SELECT *
-FROM bronze.crm_prd_info
+FROM silver.crm_prd_info
 WHERE prd_end_dt < prd_start_dt;
 
 
@@ -75,7 +87,7 @@ SELECT
 	prd_start_dt,
 	prd_end_dt,
 	LEAD(prd_start_dt) OVER(PARTITION BY prd_key ORDER BY prd_start_dt)-1 AS prd_end_dt
-	FROM bronze.crm_prd_info;
+	FROM silver.crm_prd_info;
 
 SELECT * FROM
 silver.crm_prd_info;
@@ -90,16 +102,16 @@ SELECT sls_ord_num,
 	sls_sales,
 	sls_quantity,
 	sls_price
-FROM bronze.crm_sales_details
+FROM silver.crm_sales_details
 WHERE sls_prd_key NOT IN (SELECT prd_key FROM silver.crm_prd_info);
 
 -- Check for Invalid Dates --
 SELECT NULLIF(sls_order_dt,0) AS sls_order_dt
-FROM bronze.crm_sales_details
+FROM silver.crm_sales_details
 WHERE sls_order_dt <= 0 OR LEN(sls_order_dt) != 8;
 
 SELECT * FROM
-bronze.crm_sales_details
+silver.crm_sales_details
 WHERE sls_order_dt > sls_ship_dt OR
 	sls_order_dt >sls_due_dt;
 
@@ -109,7 +121,7 @@ SELECT
 	sls_sales
 	sls_quantity,
 	sls_price 
-FROM bronze.crm_sales_details
+FROM silver.crm_sales_details
 WHERE sls_sales ! = sls_quantity * sls_price
 OR sls_sales is NULL OR sls_quantity is NULL OR sls_price IS NULL
 OR sls_sales <=0 OR sls_quantity <=0 OR sls_price <=0
@@ -133,7 +145,7 @@ CASE WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid, 4 ,LEN(cid))
 END AS cid,
 	bdate,
 	gen	
-FROM bronze.erp_cust_az12
+FROM silver.erp_cust_az12
 WHERE CASE WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid, 4 ,LEN(cid))
 	ELSE cid
 END NOT IN (SELECT DISTINCT cst_key FROM silver.crm_cust_info)
@@ -141,7 +153,7 @@ END NOT IN (SELECT DISTINCT cst_key FROM silver.crm_cust_info)
 -- Date Validation Out of Range Dates (check bdates for future)--
 
 SELECT DISTINCT	bdate
-FROM bronze.erp_cust_az12
+FROM silver.erp_cust_az12
 WHERE bdate < '1924-01-01' or  bdate > GETDATE()
 
 SELECT 
@@ -152,12 +164,12 @@ CASE WHEN bdate > GETDATE() THEN NULL
 	ELSE bdate
 END AS bdate,
 	gen
-FROM bronze.erp_cust_az12;
+FROM silver.erp_cust_az12;
 
 -- Data Standarization & Consistency --
 
 SELECT DISTINCT gen
-FROM bronze.erp_cust_az12;
+FROM silver.erp_cust_az12;
 
 SELECT 
 CASE WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid, 4 ,LEN(cid))
@@ -170,20 +182,20 @@ CASE WHEN UPPER(TRIM(gen)) IN ('F', 'Female') THEN 'Female'
 	WHEN UPPER(TRIM(gen)) IN ('M', 'Male') THEN 'Male'
 	ELSE 'n/a'
 END AS gen
-FROM bronze.erp_cust_az12;
+FROM silver.erp_cust_az12;
 
 -- cleaning erp_loc_101 -- checking for matching values
 
 SELECT 
 REPLACE(cid, '-', '') cid,
 cntry
-FROM bronze.erp_loc_a101 
+FROM silver.erp_loc_a101 
 WHERE REPLACE(cid, '-', '') NOT IN
 	(SELECT cst_key FROM silver.crm_cust_info);
 
 -- Data Standarization & consistency --
 SELECT DISTINCT cntry
-FROM bronze.erp_loc_a101
+FROM silver.erp_loc_a101
 ORDER BY cntry;
 
 --cleaning cntry--
@@ -194,13 +206,13 @@ CASE WHEN TRIM(cntry) = 'DE' THEN 'Germany'
 	WHEN TRIM(cntry) = '' OR cntry IS NULL THEN 'n/a'
 	ELSE TRIM(cntry)
 END AS cntry
-FROM bronze.erp_loc_a101;
+FROM silver.erp_loc_a101;
 
 -- Cleanin erp_px_cat_g1v2 --
 --No cleaning needed --
-SELECT * FROM bronze.erp_px_cat_g1v2;
+SELECT * FROM silver.erp_px_cat_g1v2;
 
 -- Check for unwanted spaces --
-SELECT * from bronze.erp_px_cat_g1v2
+SELECT * from silver.erp_px_cat_g1v2
 	WHERE cat != TRIM(cat) OR subcat != (subcat) OR maintenance != TRIM(main
 
