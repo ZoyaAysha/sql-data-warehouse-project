@@ -1,7 +1,10 @@
+
+/*
 DDL Script : Create Silver tables
 ==========================================================================
   Run this script to re-define the structure of bronze tables
 ==========================================================================
+*/
 
 USE Datawarehouse;
 
